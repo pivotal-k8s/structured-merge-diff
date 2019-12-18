@@ -17,42 +17,60 @@ limitations under the License.
 package merge_test
 
 import (
+	"fmt"
 	"testing"
 
+	"sigs.k8s.io/structured-merge-diff/typed"
 	"sigs.k8s.io/structured-merge-diff/v2/fieldpath"
+	. "sigs.k8s.io/structured-merge-diff/v2/internal/fixture"
 )
 
+var atomicParser = func() typed.ParseableType {
+	parser, err := typed.NewParser(`types:
+- name: sets
+  map:
+    fields:
+    - name: list
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: atomic`)
+	if err != nil {
+		panic(err)
+	}
+	return parser.Type("sets")
+}()
+
 func TestAtomicList(t *testing.T) {
-	testcase := TestCase{
-		Ops: []Operation{
-			//apply the object once
-			Apply{
-				Manager:    "manager-one",
-				APIVersion: "v1",
-				Object: `
-          list:
-          - a
-          - b
-        `,
-			},
-			//apply the object
-			Apply{
-				Manager:    "manager-two",
-				APIVersion: "v1",
-				Object: `
-          list:
-          - c
-          - d
-        `,
-			},
+	operationsSequence := []Operation{
+		//apply the object once
+		Apply{
+			Manager:    "manager-one",
+			APIVersion: "v1",
+			Object: `
+				list:
+				- a
+				- b
+			`,
+		},
+		//apply the object
+		Apply{
+			Manager:    "manager-two",
+			APIVersion: "v1",
+			Object: `
+				list:
+				- c
+				- d
+			`,
 		},
 	}
 
-	expectedObject := `
-    list:
-    - c
-    - d
-  `
+	// expectedObject := `
+	//   list:
+	//   - c
+	//   - d
+	// `
 
 	managedFields := fieldpath.ManagedFields{
 		"manager-two": fieldpath.NewVersionedSet(
@@ -63,15 +81,26 @@ func TestAtomicList(t *testing.T) {
 			"v3",
 			false,
 		),
-		"apply-two": fieldpath.NewVersionedSet(
-			_NS(
-				_P("list", _KBF("name", "c")),
-				_P("list", _KBF("name", "c"), "name"),
-			),
-			"v2",
-			false,
-		),
+	}
+
+	testcase := TestCase{
+		Ops: operationsSequence,
+		Object: `
+	    list:
+	    - c
+	    - d
+	  `,
+		Managed: managedFields,
 	}
 
 	//run tests
+
+	// for name, test := range tests {
+	t.Run("first test", func(t *testing.T) {
+		if err := testcase.Test(atomicParser); err != nil {
+			fmt.Printf("%#v\n", err)
+			t.Fatal(err)
+		}
+	})
+	// }
 }
