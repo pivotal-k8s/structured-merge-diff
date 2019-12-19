@@ -20,12 +20,12 @@ import (
 	"fmt"
 	"testing"
 
-	"sigs.k8s.io/structured-merge-diff/typed"
 	"sigs.k8s.io/structured-merge-diff/v2/fieldpath"
 	. "sigs.k8s.io/structured-merge-diff/v2/internal/fixture"
+	"sigs.k8s.io/structured-merge-diff/v2/typed"
 )
 
-var atomicParser = func() typed.ParseableType {
+var atomicListParser = func() typed.ParseableType {
 	parser, err := typed.NewParser(`types:
 - name: sets
   map:
@@ -36,6 +36,23 @@ var atomicParser = func() typed.ParseableType {
           elementType:
             scalar: string
           elementRelationship: atomic`)
+	if err != nil {
+		panic(err)
+	}
+	return parser.Type("sets")
+}()
+
+var separableListParser = func() typed.ParseableType {
+	parser, err := typed.NewParser(`types:
+- name: sets
+  map:
+    fields:
+    - name: list
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: associative`)
 	if err != nil {
 		panic(err)
 	}
@@ -56,8 +73,8 @@ func TestAtomicList(t *testing.T) {
 		},
 		//apply the object
 		Apply{
-			Manager:    "manager-two",
-			APIVersion: "v1",
+			Manager:    "manager-one",
+			APIVersion: "v2",
 			Object: `
 				list:
 				- c
@@ -66,19 +83,12 @@ func TestAtomicList(t *testing.T) {
 		},
 	}
 
-	// expectedObject := `
-	//   list:
-	//   - c
-	//   - d
-	// `
-
 	managedFields := fieldpath.ManagedFields{
-		"manager-two": fieldpath.NewVersionedSet(
+		"manager-one": fieldpath.NewVersionedSet(
 			_NS(
-				_P("list", _KBF("name", "c")),
-				_P("list", _KBF("name", "d"), "name"),
+				_P("list"),
 			),
-			"v3",
+			"v2",
 			false,
 		),
 	}
@@ -95,9 +105,73 @@ func TestAtomicList(t *testing.T) {
 
 	//run tests
 
+	t.Run("atomic list test", func(t *testing.T) {
+		if err := testcase.Test(atomicListParser); err != nil {
+			fmt.Printf("%#v\n", err)
+			t.Fatal(err)
+		}
+	})
+}
+
+func TestAssociativeList(t *testing.T) {
+	operationsSequence := []Operation{
+		//apply the object once
+		Apply{
+			Manager:    "manager-one",
+			APIVersion: "v1",
+			Object: `
+				list:
+				- a
+				- b
+			`,
+		},
+		//reapply the object
+		Apply{
+			Manager:    "manager-two",
+			APIVersion: "v2",
+			Object: `
+				list:
+				- c
+				- d
+			`,
+		},
+	}
+
+	managedFields := fieldpath.ManagedFields{
+		"manager-one": fieldpath.NewVersionedSet(
+			_NS(
+				_P("list", _V("a")),
+				_P("list", _V("b")),
+			),
+			"v1",
+			false,
+		),
+		"manager-two": fieldpath.NewVersionedSet(
+			_NS(
+				_P("list", _V("c")),
+				_P("list", _V("d")),
+			),
+			"v2",
+			false,
+		),
+	}
+
+	testcase := TestCase{
+		Ops: operationsSequence,
+		Object: `list:
+- a
+- b
+- c
+- d
+`,
+		Managed: managedFields,
+	}
+
+	//run tests
+
 	// for name, test := range tests {
-	t.Run("first test", func(t *testing.T) {
-		if err := testcase.Test(atomicParser); err != nil {
+	t.Run("separable test", func(t *testing.T) {
+		if err := testcase.Test(separableListParser); err != nil {
 			fmt.Printf("%#v\n", err)
 			t.Fatal(err)
 		}

@@ -376,6 +376,11 @@ func (tc TestCase) Test(parser typed.ParseableType) error {
 	return tc.TestWithConverter(parser, &dummyConverter{})
 }
 
+// TestParserChange runs the test-case using the given parser and a dummy converter.
+func (tc TestCase) TestParserChange(firstParser, secondParser typed.ParseableType) error {
+	return tc.TestWithTwoParsers(firstParser, secondParser, &dummyConverter{})
+}
+
 // Bench runs the test-case using the given parser and a dummy converter, but
 // doesn't check exit conditions--see the comment for BenchWithConverter.
 func (tc TestCase) Bench(parser typed.ParseableType) error {
@@ -414,6 +419,58 @@ func (tc TestCase) BenchWithConverter(parser typed.ParseableType, converter merg
 			return fmt.Errorf("failed operation %d: %v", i, err)
 		}
 	}
+	return nil
+}
+
+func (tc TestCase) TestWithTwoParsers(firstParser, secondParser typed.ParseableType, converter merge.Converter) error {
+	state := State{
+		Updater: &merge.Updater{Converter: converter},
+		Parser:  firstParser,
+	}
+	if tc.RequiresUnions {
+		state.Updater.EnableUnionFeature()
+	} else {
+		// Also test it with unions on.
+		tc2 := tc
+		tc2.RequiresUnions = true
+		err := tc2.TestWithConverter(firstParser, converter)
+		if err != nil {
+			return fmt.Errorf("fails if unions are on: %v", err)
+		}
+	}
+	// We currently don't have any test that converts, we can take
+	// care of that later.
+	for i, ops := range tc.Ops {
+		err := ops.run(&state)
+		if err != nil {
+			return fmt.Errorf("failed operation %d: %v", i, err)
+		}
+	}
+
+	// If LastObject was specified, compare it with LiveState
+	if tc.Object != typed.YAMLObject("") {
+		comparison, err := state.CompareLive(tc.Object)
+		if err != nil {
+			return fmt.Errorf("failed to compare live with config: %v", err)
+		}
+		if !comparison.IsSame() {
+			return fmt.Errorf("expected live and config to be the same:\n%v\nConfig: %v\n", comparison, value.ToString(state.Live.AsValue()))
+		}
+	}
+
+	if tc.Managed != nil {
+		if diff := state.Managers.Difference(tc.Managed); len(diff) != 0 {
+			return fmt.Errorf("expected Managers to be:\n%v\ngot:\n%v", tc.Managed, state.Managers)
+		}
+	}
+
+	// Fail if any empty sets are present in the managers
+	for manager, set := range state.Managers {
+		if set.Set().Empty() {
+			return fmt.Errorf("expected Managers to have no empty sets, but found one managed by %v", manager)
+		}
+	}
+
 	return nil
 }
 
