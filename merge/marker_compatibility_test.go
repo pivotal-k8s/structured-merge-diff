@@ -42,7 +42,7 @@ var atomicListParser = func() typed.ParseableType {
 	return parser.Type("sets")
 }()
 
-var separableListParser = func() typed.ParseableType {
+var setListParser = func() typed.ParseableType {
 	parser, err := typed.NewParser(`types:
 - name: sets
   map:
@@ -171,10 +171,62 @@ func TestAssociativeList(t *testing.T) {
 
 	// for name, test := range tests {
 	t.Run("separable test", func(t *testing.T) {
-		if err := testcase.Test(separableListParser); err != nil {
+		if err := testcase.Test(setListParser); err != nil {
 			fmt.Printf("%#v\n", err)
 			t.Fatal(err)
 		}
 	})
 	// }
+}
+
+func TestAssociativeToAtomicMultipleAppliersShouldFail(t *testing.T) {
+	operationsSequence := []Operation{
+		//apply the object once
+		Apply{
+			Manager:    "manager-one",
+			APIVersion: "v1",
+			Object: `
+				list:
+				- a
+				- b
+			`,
+		},
+		//reapply the object
+		Apply{
+			Manager:    "manager-two",
+			APIVersion: "v2",
+			Object: `
+				list:
+				- c
+				- d
+			`,
+		},
+	}
+
+	expectedManagedFields := fieldpath.ManagedFields{
+		"manager-one": fieldpath.NewVersionedSet(
+			_NS(
+				_P("list", _V("a")),
+				_P("list", _V("b")),
+			),
+			"v1",
+			false,
+		),
+	}
+
+	testcase := TestCase{
+		Ops: operationsSequence,
+		Object: `list:
+- a
+- b
+`,
+		Managed: expectedManagedFields,
+	}
+
+	t.Run("associative to atomic list test", func(t *testing.T) {
+		if err := testcase.TestParserChange(atomicListParser, setListParser); err != nil {
+			fmt.Printf("%#v\n", err)
+			t.Fatal(err)
+		}
+	})
 }

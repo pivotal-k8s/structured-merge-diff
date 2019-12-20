@@ -218,7 +218,7 @@ type List struct {
 	// explicitly state the element relationship for all lists.
 	ElementRelationship ElementRelationship `yaml:"elementRelationship,omitempty"`
 
-	// Iff ElementRelationship is `associative`, and the element type is
+	// If ElementRelationship is `associative`, and the element type is
 	// map, then Keys must have non-zero length, and it lists the fields
 	// of the element's map type which are to be used as the keys of the
 	// list.

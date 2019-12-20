@@ -37,7 +37,7 @@ type State struct {
 
 // FixTabsOrDie counts the number of tab characters preceding the first
 // line in the given yaml object. It removes that many tabs from every
-// line. It panics (it's a test funtion) if some line has fewer tabs
+// line. It panics (it's a test function) if some line has fewer tabs
 // than the first line.
 //
 // The purpose of this is to make it easier to read tests.
@@ -378,7 +378,7 @@ func (tc TestCase) Test(parser typed.ParseableType) error {
 
 // TestParserChange runs the test-case using the given parser and a dummy converter.
 func (tc TestCase) TestParserChange(firstParser, secondParser typed.ParseableType) error {
-	return tc.TestWithTwoParsers(firstParser, secondParser, &dummyConverter{})
+	return tc.testWithTwoParsers(firstParser, secondParser, &dummyConverter{})
 }
 
 // Bench runs the test-case using the given parser and a dummy converter, but
@@ -422,30 +422,57 @@ func (tc TestCase) BenchWithConverter(parser typed.ParseableType, converter merg
 	return nil
 }
 
-func (tc TestCase) TestWithTwoParsers(firstParser, secondParser typed.ParseableType, converter merge.Converter) error {
+func (tc TestCase) testWithTwoParsers(firstParser, secondParser typed.ParseableType, converter merge.Converter) error {
 	state := State{
 		Updater: &merge.Updater{Converter: converter},
 		Parser:  firstParser,
 	}
-	if tc.RequiresUnions {
-		state.Updater.EnableUnionFeature()
-	} else {
-		// Also test it with unions on.
-		tc2 := tc
-		tc2.RequiresUnions = true
-		err := tc2.TestWithConverter(firstParser, converter)
-		if err != nil {
-			return fmt.Errorf("fails if unions are on: %v", err)
-		}
+
+	fmt.Println("first state ok")
+	// if tc.RequiresUnions {
+	// 	state.Updater.EnableUnionFeature()
+	// } else {
+	// 	// Also test it with unions on.
+	// 	tc2 := tc
+	// 	tc2.RequiresUnions = true
+	// 	err := tc2.TestWithConverter(firstParser, converter)
+	// 	if err != nil {
+	// 		return fmt.Errorf("fails if unions are on: %v", err)
+	// 	}
+	// }
+
+	// Going forward we make the huge assumption that the testcase only ever runs 2 operations
+	// This is of course not true, so:
+	// TODO make loop logic out of it, so future contributors can use it.
+
+	//run the first operation
+	err := tc.Ops[0].run(&state)
+	if err != nil {
+		return fmt.Errorf("failed operation %d: %v", 0, err)
 	}
-	// We currently don't have any test that converts, we can take
-	// care of that later.
-	for i, ops := range tc.Ops {
-		err := ops.run(&state)
-		if err != nil {
-			return fmt.Errorf("failed operation %d: %v", i, err)
-		}
+
+	fmt.Println("first op run ok")
+
+	// install the second parser; a.k.a. update the list type in the CRD
+	// making sure that we pass forward the state of the object so far in `Live`
+	// and the managedFields state in `Managers`
+	middleState := State{
+		Live:     state.Live,
+		Managers: state.Managers,
+		Updater:  &merge.Updater{Converter: converter},
+		Parser:   secondParser,
 	}
+
+	fmt.Println("second state ok")
+	fmt.Printf("%#v\n", middleState.Live)
+
+	//run the second operation
+	err = tc.Ops[1].run(&middleState)
+	if err != nil {
+		return fmt.Errorf("failed operation %d: %v", 1, err)
+	}
+
+	fmt.Println("second op run ok")
 
 	// If LastObject was specified, compare it with LiveState
 	if tc.Object != typed.YAMLObject("") {
@@ -453,9 +480,14 @@ func (tc TestCase) TestWithTwoParsers(firstParser, secondParser typed.ParseableT
 		if err != nil {
 			return fmt.Errorf("failed to compare live with config: %v", err)
 		}
+
+		fmt.Println("live comparison ran - no error")
+
 		if !comparison.IsSame() {
 			return fmt.Errorf("expected live and config to be the same:\n%v\nConfig: %v\n", comparison, value.ToString(state.Live.AsValue()))
 		}
+
+		fmt.Println("live comparison ran - no difference")
 	}
 
 	if tc.Managed != nil {
