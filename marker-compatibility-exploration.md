@@ -233,6 +233,10 @@ managedFields:
     time: "2019-12-23T16:25:49Z"
 ```
 
+### x-list-type: map
+Very similar to above - you start with a map, whose initial entries are managed by `before-first-apply` with `operation: Update`, once you switch to SSA.
+
+Equally the SSA -> non-SSA path will leave you with `kubectl` via `Update` managing all the fields.
 
 # More observations:
 1. The managers stick around in managedFields, even when they're no longer around. I.e. when the fields that they manage are "gone", or when the list is atomic and a different manager has claimed ownership. Is that intentional? What's the use case?
