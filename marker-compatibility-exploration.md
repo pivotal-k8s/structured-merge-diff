@@ -18,10 +18,10 @@ Dimensions:
 1. When moving: Atomic -> set => should never be a problem
 
 1. Set -> atomic should be fine if single manager, should fail otherwise?
-Set with multiple managers on a single field:
-- update crd to `x-list-type: set` --> fine
-- ~k apply <object with no changes> --field-manager=<last manager who changed the object> --> succeeds, even without passing --force-conflicts, and replaces the object with the values provided. I.e. drops the other manager.~ not particularly interesting.
-- k apply <object with changes> --field-manager=<anybody> --> succeeds (even when touching fields that other managers previously set/managed), and replaces the object with the values provided. I.e. "overrules" other managers.
+Given a `x-kubernetes-list-type: set` with multiple managers on a single field:
+- When updating `x-kubernetes-list-type: set-> atomic` in crd and issueing `k apply -f crd.yml` --> success and no changes in the objects.
+- When applying the (pre-existing) custom objects:
+`k apply <object with changes> --field-manager=<anybody>` --> succeeds (even when touching fields that other managers previously set/managed), and replaces the object with the values provided. I.e. "overrules" other managers.
 It leaves previous entries in `managedFields` intact though. You end up with something like:
 ```
 managedFields:
