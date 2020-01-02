@@ -113,7 +113,7 @@ func TestAtomicList(t *testing.T) {
 	})
 }
 
-func TestAssociativeList(t *testing.T) {
+func TestListSet(t *testing.T) {
 	operationsSequence := []Operation{
 		//apply the object once
 		Apply{
@@ -179,7 +179,7 @@ func TestAssociativeList(t *testing.T) {
 	// }
 }
 
-func TestAssociativeToAtomicMultipleAppliersShouldFail(t *testing.T) {
+func TestSetToAtomicMultipleAppliersSucceeds(t *testing.T) {
 	operationsSequence := []Operation{
 		//apply the object once
 		Apply{
@@ -212,19 +212,27 @@ func TestAssociativeToAtomicMultipleAppliersShouldFail(t *testing.T) {
 			"v1",
 			false,
 		),
+		"manager-two": fieldpath.NewVersionedSet(
+			_NS(
+				_P("list", _V("c")),
+				_P("list", _V("d")),
+			),
+			"v1",
+			false,
+		),
 	}
 
 	testcase := TestCase{
 		Ops: operationsSequence,
 		Object: `list:
-- a
-- b
+- c
+- d
 `,
 		Managed: expectedManagedFields,
 	}
 
-	t.Run("associative to atomic list test", func(t *testing.T) {
-		if err := testcase.TestParserChange(atomicListParser, setListParser); err != nil {
+	t.Run("List: set-> atomic", func(t *testing.T) {
+		if err := testcase.TestParserChange(setListParser, atomicListParser); err != nil {
 			fmt.Printf("%#v\n", err)
 			t.Fatal(err)
 		}
