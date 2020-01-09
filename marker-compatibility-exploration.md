@@ -12,12 +12,105 @@ Dimensions:
 - operation type -- apply vs patch
 
 # Server side apply from the start
-## x-list-type (and potentially x-list-map-keys)
+
+## x-kubernetes-map-type
+1. `granular` refers to the map, not the fields. The fields are atomic in behaviour; they can only ever be managed by a single manager.
+
+To show in practice:
+
+With this configuration (crd.yml)
+```
+properties:
+  colour:
+    type: object
+    additionalProperties:
+    type: string
+    x-kubernetes-map-type: granular
+```
+
+And this spec (object.yml)
+```
+spec:
+  colour:
+    name:   turquoise
+    hue:    light
+    saturation: strong
+```
+
+`k apply -f object-map-blues.yml --server-side=true --field-manager=first` makes `first` the manager of name, hue, saturation (but not the map)
+
+with this similar spec
+And this spec (object2.yml)
+```
+spec:
+  colour:
+    name:   turquoise
+    hue:    light
+    saturation: different
+```
+`k apply -f object-map-blues.yml --server-side=true --field-manager=second` will fail with conflict.
+
+However if instead `first` and `second` apply the following specs, correspondingly:
+
+```
+spec:
+  colour:
+    name:   turquoise
+    hue:    light
+```
+
+```
+spec:
+  colour:
+    saturation: opaque
+```
+
+Then we end up with:
+
+```
+apiVersion: colours.example.com/v1
+kind: ColourMap
+metadata:
+  creationTimestamp: "2020-01-09T13:00:59Z"
+  generation: 2
+  managedFields:
+  - apiVersion: colours.example.com/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:spec:
+        f:colour:
+          f:hue: {}
+          f:name: {}
+    manager: first
+    operation: Apply
+    time: "2020-01-09T13:00:59Z"
+  - apiVersion: colours.example.com/v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:spec:
+        f:colour:
+          f:saturation: {}
+    manager: second
+    operation: Apply
+    time: "2020-01-09T13:01:18Z"
+  name: blue-map
+  namespace: default
+  resourceVersion: "4106"
+  selfLink: /apis/colours.example.com/v1/namespaces/default/colourmaps/blue-map
+  uid: b7daa416-c549-4a29-9ab2-58122654e1f8
+spec:
+  colour:
+    hue: strong
+    name: turquoise
+    saturation: opaque
+```
+
+## x-kubernetes-list-type (and potentially x-list-map-keys)
 ### Updates between lists of scalars (set <-> atomic)
 
 1. When moving: Atomic -> set => should never be a problem
 
-1. Set -> atomic should be fine if single manager, should fail otherwise?
+1. Set -> atomic should be fine if single manager, should fail otherwise? => that was my assumption, it's a bit more intricate in practice.
 Given a `x-kubernetes-list-type: set` with multiple managers on a single field:
 - When updating `x-kubernetes-list-type: set-> atomic` in crd and issueing `k apply -f crd.yml` --> success and no changes in the objects.
 - When applying the (pre-existing) custom objects:
